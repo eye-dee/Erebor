@@ -1,0 +1,141 @@
+uses
+  QueueUnit, SourceUnit, PerfomerUnit,Data;
+
+const
+  input = 'input.txt';
+  output = 'output.txt';
+
+type
+  matrix = array [1..4] of source;
+ 
+var  
+  masSource : matrix;
+  mainQueue: queue := new queue();
+  mainPerfomer: perfomer;
+  Time: integer;
+  f: text;
+  sourceNumber : integer;
+  lambda : real;
+  tau : integer;
+  mainRepository : repository := new repository();
+  i,j : integer;
+  Kmin : integer := 6000;
+  flag :  integer;
+  min : integer; //источник с минимальным временем нового запроса
+
+function getMin() : integer;
+var
+  i : integer;
+  minTime : integer := 1;
+begin
+  for i:= 2 to 4 do
+  begin
+    if (masSource[i].getNextClaimTime() < masSource[minTime].getNextClaimTime()) then
+      minTime := i;
+  end;
+  getMin := minTime;
+end;
+
+procedure setClaims(var r : repository;var m : matrix; j : integer);
+var 
+  i : integer;
+begin
+  for i := 1 to 4 do
+  begin
+    r.setClaim(i,j,m[i].getFailureCount(),m[i].getProcessedClaimCount(),m[i].getCurrentClaimNumber());
+  end;
+end;
+
+begin
+  assign(f,output);
+  rewrite(f);
+  lambda := 0.1;
+  tau := 2;
+  i := 0; 
+  while (lambda < 5.6) do
+  begin 
+    mainPerfomer := new perfomer(tau);
+    masSource[1] := new source(1,lambda);
+    masSource[2] := new source(2,1);
+    masSource[3] := new source(3,1);
+    masSource[4] := new source(4,1);
+    min := getMin();
+    randomize;
+    masSource[min].incrementationProcessedClaim();
+    mainPerfomer.pushClaim(getClaim(masSource[min]));
+    mainPerfomer.GenerateTimeRelease(masSource[min].getNextClaimTime());
+    masSource[min].generateNextClaim();
+    i := i+1;
+    
+    Time := 0;
+    while (true) do
+    begin
+      if (mainQueue.isEmpty()) then
+      begin
+        min := getMin();
+        mainQueue.push(getClaim(masSource[min]));
+        masSource[min].generateNextClaim();
+      end;
+      while ((masSource[1].getNextClaimTime < mainPerfomer.getTimeRelease()) or (masSource[2].getNextClaimTime < mainPerfomer.getTimeRelease())
+              or (masSource[3].getNextClaimTime < mainPerfomer.getTimeRelease()) or (masSource[4].getNextClaimTime < mainPerfomer.getTimeRelease())) do
+      begin
+        min := getMin();
+        if (mainQueue.isBusy) then
+        begin
+          masSource[min].generateNextClaim();
+          masSource[min].incrementationFailure();
+        end else
+        begin
+          mainQueue.push(getClaim(masSource[min]));
+          masSource[min].generateNextClaim();
+        end;
+      end;
+      mainQueue.correcting(mainPerfomer);
+      if (mainPerfomer.getTimeRelease <= mainQueue.get().getNextClaimTime()) then
+      begin
+        sourceNumber := mainPerfomer.release();
+        if (sourceNumber <> 0) then
+        begin
+          masSource[sourceNumber].incrementationProcessedClaim();
+          mainPerfomer.pushClaim(getClaim(mainQueue.get()));
+          mainPerfomer.GenerateTimeRelease(mainQueue.get().getNextClaimTime());
+          mainQueue.pop();
+        end;
+      end;
+    //writeln(f,masSource[1].getCurrentClaimNumber(),' ',masSource[2].getCurrentClaimNumber(),' ',masSource[3].getCurrentClaimNumber(),' ',masSource[4].getCurrentClaimNumber(),' ');
+    if (masSource[1].getCurrentClaimNumber() > Kmin) and (masSource[2].getCurrentClaimNumber() > Kmin) and (masSource[3].getCurrentClaimNumber() > Kmin) and (masSource[4].getCurrentClaimNumber() > Kmin)  then //Kmin задать пользователем
+    begin
+      lambda := lambda + 0.5;
+      break;
+    end;
+    end; //end of main cycle
+    while not (mainQueue.isEmpty()) do
+    begin
+      sourceNumber := mainQueue.get().getSourceNumber();
+      mainQueue.pop();
+      masSource[sourceNumber].incrementationFailure();
+    end;
+    //sleep(500);
+    setClaims(mainRepository,masSource,i);
+    for j := 1 to 4 do
+    begin
+      mainrepository.setCount(j,i, mainPerfomer.getMiddleCount(j) + mainQueue.getMiddleCount(j)); 
+    end;
+    for j :=1 to sourceCount do
+      mainrepository.setCount(j,i,mainPerfomer.getMiddleCount(j) + mainQueue.getMiddleCount(j));
+    writeln(f,'отказы | обработанные | всего | вероятность отказа | среднее время ожидания');
+    writeln(f,'#1 ',masSource[1].getFailureCount,' ',masSource[1].getProcessedClaimCount(),' ',masSource[1].getCurrentClaimNumber(),' ',
+                   masSource[1].getFailureCount()/masSource[1].getCurrentClaimNumber(), ' ',mainPerfomer.getMiddleCount(1) + mainQueue.getMiddleCount(1));
+    writeln(f,'#2 ',masSource[2].getFailureCount,' ',masSource[2].getProcessedClaimCount(),' ',masSource[2].getCurrentClaimNumber(),' ',
+                   masSource[2].getFailureCount()/masSource[2].getCurrentClaimNumber(),' ',mainPerfomer.getMiddleCount(2) + mainQueue.getMiddleCount(2));
+    writeln(f,'#3 ',masSource[3].getFailureCount,' ',masSource[3].getProcessedClaimCount(),' ',masSource[3].getCurrentClaimNumber(),' ',
+                   masSource[3].getFailureCount()/masSource[3].getCurrentClaimNumber(),' ',mainPerfomer.getMiddleCount(3) + mainQueue.getMiddleCount(3));
+    writeln(f,'#4 ',masSource[4].getFailureCount,' ',masSource[4].getProcessedClaimCount(),' ',masSource[4].getCurrentClaimNumber(),' ',
+                   masSource[4].getFailureCount()/masSource[4].getCurrentClaimNumber(),' ',mainPerfomer.getMiddleCount(4) + mainQueue.getMiddleCount(4));
+    mainPerfomer.nulling();
+    mainQueue.nulling();
+  end;
+  
+  close(f);
+  
+end.

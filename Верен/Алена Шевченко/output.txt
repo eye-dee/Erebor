@@ -1,0 +1,4 @@
+write list
+n(AaBo(AaB))on(AaBo(AaB))an(AaBo(AaB))on(AaBo(AaB))
+write list
+ABaABaonABaABaonoABaABaonaABaABaono
